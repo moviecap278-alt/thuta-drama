@@ -1,5 +1,7 @@
 streamlit
-openai-whisper
+faster-whisper
 deep-translator
 edge-tts
-moviepy==1.0.3
+pydub
+gdown
+
