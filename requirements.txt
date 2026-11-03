@@ -1,5 +1,6 @@
 streamlit
 faster-whisper
+tokenizers<0.20
 deep-translator
 edge-tts
 soundfile
