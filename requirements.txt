@@ -4,4 +4,3 @@ deep-translator
 edge-tts
 pydub
 gdown
-
