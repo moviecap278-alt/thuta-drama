@@ -4,16 +4,15 @@ import tempfile
 import asyncio
 import subprocess
 import edge_tts
-from deep_translator import GoogleTranslator
+from groq import Groq
 import soundfile as sf
 import numpy as np
 import gdown
-from groq import Groq
 
 st.set_page_config(page_title="THUTA — 1080p Groq Free Auto-Dubbing", page_icon="🎬", layout="wide")
 
 st.title("🎬 THUTA — 1080p Auto-Dubbing Studio (Groq Free API)")
-st.caption("Groq ၏ အခမဲ့ Whisper API ကို အသုံးပြု၍ 1080p ဗီဒီယိုများကို မြန်မာစကားပြောသို့ အလိုအလျောက် ပြောင်းပေးသည့်စနစ်")
+st.caption("Groq ၏ အခမဲ့ Whisper နှင့် Translation AI ကို အသုံးပြု၍ 1080p ဗီဒီယိုများကို မြန်မာစကားပြောသို့ အလိုအလျောက် ပြောင်းပေးသည့်စနစ်")
 
 with st.sidebar:
     st.header("⚙️ အသံနှင့် Groq API ပြင်ဆင်ရန်")
@@ -84,8 +83,7 @@ if video_ready:
 
             seg_list = transcription.segments
 
-            progress.progress(50, text="အဆင့် ၂/၄ - မြန်မာဘာသာပြန်ပြီး အချိန်ကိုက် AI အသံသွင်းနေပါသည်...")
-            translator = GoogleTranslator(source='auto', target='my')
+            progress.progress(50, text="အဆင့် ၂/၄ - Groq AI ဖြင့် မြန်မာဘာသာသို့ တိုက်ရိုက်ဘာသာပြန်ပြီး အသံသွင်းနေပါသည်...")
             
             sample_rate = 22050
             total_samples = int(total_duration_sec * sample_rate)
@@ -93,26 +91,28 @@ if video_ready:
 
             log_box = st.expander("📜 ဘာသာပြန် စာသားများ ကြည့်ရန်", expanded=False)
             
-            # Batch translation to prevent rate limiting
-            texts_to_translate = [seg['text'].strip() for seg in seg_list if seg['text'].strip()]
-            translated_texts = []
-            if texts_to_translate:
-                try:
-                    translated_texts = translator.translate_batch(texts_to_translate)
-                except Exception:
-                    # Fallback to individual translation with small delay if batch fails
-                    for t in texts_to_translate:
-                        translated_texts.append(translator.translate(t))
-
-            trans_idx = 0
             for idx, seg in enumerate(seg_list):
                 orig_txt = seg['text'].strip()
                 if not orig_txt:
                     continue
                 
-                my_txt = translated_texts[trans_idx] if trans_idx < len(translated_texts) else orig_txt
-                trans_idx += 1
-                
+                # Translate text directly using Groq Llama model for perfect translation and zero rate limits
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a professional translator. Translate the following movie dialogue or recap text into natural, fluent Burmese (Myanmar language). Output only the translated Burmese text without any explanation."
+                        },
+                        {
+                            "role": "user",
+                            "content": orig_txt
+                        }
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.3,
+                )
+                my_txt = chat_completion.choices[0].message.content.strip()
+
                 log_box.write(f"⏱️ `{seg['start']:.1f}s - {seg['end']:.1f}s`: {my_txt}")
                 
                 seg_tts_path = os.path.join(temp_dir, f"seg_{idx}.mp3")
@@ -163,4 +163,4 @@ if video_ready:
                 )
         except Exception as e:
             st.error(f"Error: {str(e)}")
-                   
+            
