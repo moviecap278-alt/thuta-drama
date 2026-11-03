@@ -5,10 +5,10 @@ import asyncio
 import subprocess
 import edge_tts
 from deep_translator import GoogleTranslator
-from faster_whisper import WhisperModel
 import soundfile as sf
 import numpy as np
 import gdown
+from openai import OpenAI
 
 st.set_page_config(page_title="THUTA — 1080p Pro Auto-Dubbing", page_icon="🎬", layout="wide")
 
@@ -16,7 +16,9 @@ st.title("🎬 THUTA — 1080p Auto-Dubbing Studio (Up to 5GB / 10 Mins)")
 st.caption("နိုင်ငံခြားဗီဒီယို တင်လိုက်ရုံဖြင့် မူရင်း 1080p အရည်အသွေးမပျက်ဘဲ မြန်မာစကားပြော အလိုအလျောက် ထုတ်ပေးသည့်စနစ်")
 
 with st.sidebar:
-    st.header("⚙️ အသံနှင့် စနစ် ပြင်ဆင်ရန်")
+    st.header("⚙️ အသံနှင့် API ပြင်ဆင်ရန်")
+    openai_api_key = st.text_input("🔑 OpenAI API Key ထည့်ပါ", type="password")
+    
     voice_choice = st.selectbox(
         "🎙️ မြန်မာ AI အသံ",
         options=[
@@ -28,10 +30,6 @@ with st.sidebar:
     selected_voice = voice_choice[1]
     speech_rate = st.slider("⚡ စကားပြောနှုန်း (Speed)", min_value=-20, max_value=50, value=15, step=5, format="+%d%%")
     bg_volume = st.slider("🔉 မူရင်းဗီဒီယို အသံတိုးမည့်ပမာဏ (BG Volume)", min_value=0.0, max_value=0.5, value=0.08, step=0.02)
-
-@st.cache_resource
-def get_whisper():
-    return WhisperModel("base", device="cpu", compute_type="int8")
 
 async def make_tts(text, voice, rate, out_file):
     rate_str = f"+{rate}%" if rate >= 0 else f"{rate}%"
@@ -56,7 +54,9 @@ else:
         video_ready = True
 
 if video_ready:
-    if st.button("🚀 မြန်မာစကားပြော ဗီဒီယို စတင်ထုတ်လုပ်မည် (1080p Full HD)", type="primary", use_container_width=True):
+    if not openai_api_key:
+        st.warning("⚠️ ကျေးဇူးပြု၍ ဘယ်ဘက် Sidebar တွင် OpenAI API Key ထည့်ပေးပါခင်ဗျာ။")
+    elif st.button("🚀 မြန်မာစကားပြော ဗီဒီယို စတင်ထုတ်လုပ်မည် (1080p Full HD)", type="primary", use_container_width=True):
         progress = st.progress(0, text="စတင်နေပါသည်...")
         try:
             if upload_mode.startswith("Google Drive"):
@@ -69,10 +69,21 @@ if video_ready:
             )
             total_duration_sec = float(probe.stdout.strip())
 
-            progress.progress(25, text="အဆင့် ၁/၄ - နိုင်ငံခြားစကားပြောများကို အချိန်ကိုက် ဖမ်းယူနေပါသည်...")
-            model = get_whisper()
-            segments, _ = model.transcribe(input_video_path, beam_size=5)
-            seg_list = list(segments)
+            progress.progress(25, text="အဆင့် ၁/၄ - ဗီဒီယိုမှ အသံဖိုင်ထုတ်ယူပြီး OpenAI Whisper ဖြင့် အချိန်ကိုက်ဖမ်းယူနေပါသည်...")
+            
+            audio_extracted_path = os.path.join(temp_dir, "extracted_audio.mp3")
+            subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-vn", "-acodec", "libmp3lame", audio_extracted_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            client = OpenAI(api_key=openai_api_key)
+            with open(audio_extracted_path, "rb") as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    response_format="verbose_json",
+                    timestamp_granularities=["segment"]
+                )
+
+            seg_list = transcript.segments
 
             progress.progress(50, text="အဆင့် ၂/၄ - မြန်မာဘာသာပြန်ပြီး အချိန်ကိုက် AI အသံသွင်းနေပါသည်...")
             translator = GoogleTranslator(source='auto', target='my')
@@ -83,11 +94,11 @@ if video_ready:
 
             log_box = st.expander("📜 ဘာသာပြန် စာသားများ ကြည့်ရန်", expanded=False)
             for idx, seg in enumerate(seg_list):
-                orig_txt = seg.text.strip()
+                orig_txt = seg['text'].strip()
                 if not orig_txt:
                     continue
                 my_txt = translator.translate(orig_txt)
-                log_box.write(f"⏱️ `{seg.start:.1f}s - {seg.end:.1f}s`: {my_txt}")
+                log_box.write(f"⏱️ `{seg['start']:.1f}s - {seg['end']:.1f}s`: {my_txt}")
                 
                 seg_tts_path = os.path.join(temp_dir, f"seg_{idx}.mp3")
                 asyncio.run(make_tts(my_txt, selected_voice, speech_rate, seg_tts_path))
@@ -98,7 +109,7 @@ if video_ready:
                     
                     if os.path.exists(seg_wav_path):
                         data, fs = sf.read(seg_wav_path)
-                        start_sample = int(seg.start * sample_rate)
+                        start_sample = int(seg['start'] * sample_rate)
                         end_sample = start_sample + len(data)
                         if end_sample > len(master_audio):
                             master_audio = np.pad(master_audio, (0, end_sample - len(master_audio)))
@@ -137,4 +148,4 @@ if video_ready:
                 )
         except Exception as e:
             st.error(f"Error: {str(e)}")
-            
+        
