@@ -8,16 +8,16 @@ from deep_translator import GoogleTranslator
 import soundfile as sf
 import numpy as np
 import gdown
-from openai import OpenAI
+from groq import Groq
 
-st.set_page_config(page_title="THUTA — 1080p Pro Auto-Dubbing", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="THUTA — 1080p Groq Free Auto-Dubbing", page_icon="🎬", layout="wide")
 
-st.title("🎬 THUTA — 1080p Auto-Dubbing Studio (Up to 5GB / 10 Mins)")
-st.caption("နိုင်ငံခြားဗီဒီယို တင်လိုက်ရုံဖြင့် မူရင်း 1080p အရည်အသွေးမပျက်ဘဲ မြန်မာစကားပြော အလိုအလျောက် ထုတ်ပေးသည့်စနစ်")
+st.title("🎬 THUTA — 1080p Auto-Dubbing Studio (Groq Free API)")
+st.caption("Groq ၏ အခမဲ့ Whisper API ကို အသုံးပြု၍ 1080p ဗီဒီယိုများကို မြန်မာစကားပြောသို့ အလိုအလျောက် ပြောင်းပေးသည့်စနစ်")
 
 with st.sidebar:
-    st.header("⚙️ အသံနှင့် API ပြင်ဆင်ရန်")
-    openai_api_key = st.text_input("🔑 OpenAI API Key ထည့်ပါ", type="password")
+    st.header("⚙️ အသံနှင့် Groq API ပြင်ဆင်ရန်")
+    groq_api_key = st.text_input("🔑 Groq API Key ထည့်ပါ (Free)", type="password")
     
     voice_choice = st.selectbox(
         "🎙️ မြန်မာ AI အသံ",
@@ -54,8 +54,8 @@ else:
         video_ready = True
 
 if video_ready:
-    if not openai_api_key:
-        st.warning("⚠️ ကျေးဇူးပြု၍ ဘယ်ဘက် Sidebar တွင် OpenAI API Key ထည့်ပေးပါခင်ဗျာ။")
+    if not groq_api_key:
+        st.warning("⚠️ ကျေးဇူးပြု၍ ဘယ်ဘက် Sidebar တွင် အခမဲ့ရယူထားသော Groq API Key ထည့်ပေးပါခင်ဗျာ။")
     elif st.button("🚀 မြန်မာစကားပြော ဗီဒီယို စတင်ထုတ်လုပ်မည် (1080p Full HD)", type="primary", use_container_width=True):
         progress = st.progress(0, text="စတင်နေပါသည်...")
         try:
@@ -69,21 +69,20 @@ if video_ready:
             )
             total_duration_sec = float(probe.stdout.strip())
 
-            progress.progress(25, text="အဆင့် ၁/၄ - ဗီဒီယိုမှ အသံဖိုင်ထုတ်ယူပြီး OpenAI Whisper ဖြင့် အချိန်ကိုက်ဖမ်းယူနေပါသည်...")
+            progress.progress(25, text="အဆင့် ၁/၄ - ဗီဒီယိုမှ အသံဖိုင်ထုတ်ယူပြီး Groq Whisper ဖြင့် အချိန်ကိုက်ဖမ်းယူနေပါသည်...")
             
             audio_extracted_path = os.path.join(temp_dir, "extracted_audio.mp3")
             subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-vn", "-acodec", "libmp3lame", audio_extracted_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            client = OpenAI(api_key=openai_api_key)
+            client = Groq(api_key=groq_api_key)
             with open(audio_extracted_path, "rb") as audio_file:
-                transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
+                transcription = client.audio.transcriptions.create(
+                    model="whisper-large-v3",
                     file=audio_file,
-                    response_format="verbose_json",
-                    timestamp_granularities=["segment"]
+                    response_format="verbose_json"
                 )
 
-            seg_list = transcript.segments
+            seg_list = transcription.segments
 
             progress.progress(50, text="အဆင့် ၂/၄ - မြန်မာဘာသာပြန်ပြီး အချိန်ကိုက် AI အသံသွင်းနေပါသည်...")
             translator = GoogleTranslator(source='auto', target='my')
@@ -148,4 +147,4 @@ if video_ready:
                 )
         except Exception as e:
             st.error(f"Error: {str(e)}")
-        
+            
