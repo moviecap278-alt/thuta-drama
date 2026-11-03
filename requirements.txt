@@ -1,7 +1,7 @@
 streamlit
-faster-whisper
-tokenizers==0.15.2
+openai
 deep-translator
 edge-tts
 soundfile
 gdown
+requests
